@@ -25,10 +25,17 @@ CREATE TABLE work_images (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 3. Configura le policy di sicurezza (RLS) per permettere l'accesso anonimo (solo per sviluppo/test)
+-- 3. Crea la tabella per le impostazioni (es. nomi gallerie)
+CREATE TABLE settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- 4. Configura le policy di sicurezza (RLS) per permettere l'accesso anonimo (solo per sviluppo/test)
 -- ATTENZIONE: In produzione dovresti restringere queste policy solo agli utenti autenticati!
 ALTER TABLE works ENABLE ROW LEVEL SECURITY;
 ALTER TABLE work_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Permetti lettura a tutti per works" ON works FOR SELECT USING (true);
 CREATE POLICY "Permetti inserimento a tutti per works" ON works FOR INSERT WITH CHECK (true);
@@ -39,3 +46,8 @@ CREATE POLICY "Permetti lettura a tutti per work_images" ON work_images FOR SELE
 CREATE POLICY "Permetti inserimento a tutti per work_images" ON work_images FOR INSERT WITH CHECK (true);
 CREATE POLICY "Permetti modifica a tutti per work_images" ON work_images FOR UPDATE USING (true);
 CREATE POLICY "Permetti cancellazione a tutti per work_images" ON work_images FOR DELETE USING (true);
+
+CREATE POLICY "Permetti lettura a tutti per settings" ON settings FOR SELECT USING (true);
+CREATE POLICY "Permetti inserimento a tutti per settings" ON settings FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permetti modifica a tutti per settings" ON settings FOR UPDATE USING (true);
+CREATE POLICY "Permetti cancellazione a tutti per settings" ON settings FOR DELETE USING (true);

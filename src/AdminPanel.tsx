@@ -9,17 +9,95 @@ export default function AdminPanel() {
   const [works, setWorks] = useState<Work[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [collapsedGalleries, setCollapsedGalleries] = useState<string[]>([]);
+  const [galleryNames, setGalleryNames] = useState<Record<string, string>>({});
+  const [renamingGallery, setRenamingGallery] = useState<string | null>(null);
+  const [newGalleryName, setNewGalleryName] = useState('');
+  const [activeTab, setActiveTab] = useState<'galleries' | 'sections'>('galleries');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [adminMessage, setAdminMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (adminMessage) {
+      const timer = setTimeout(() => setAdminMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [adminMessage]);
 
   const isSupabaseConfigured = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   useEffect(() => {
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && isAuthenticated) {
       fetchWorks();
+      fetchSettings();
     } else {
       setLoading(false);
     }
-  }, [isSupabaseConfigured]);
+  }, [isSupabaseConfigured, isAuthenticated]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === 'admin') {
+      setIsAuthenticated(true);
+    } else {
+      setAdminMessage({ text: 'Password errata', type: 'error' });
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center p-6">
+        <form onSubmit={handleLogin} className="w-full max-w-md bg-gray-50 p-8 rounded-2xl border border-gray-200">
+          <div className="flex flex-col items-center mb-8">
+            <Lock size={32} className="mb-4" />
+            <h1 className="text-2xl font-bold uppercase tracking-widest">Admin Login</h1>
+          </div>
+          <div className="mb-6">
+            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Password</label>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
+              autoFocus
+            />
+          </div>
+          <button type="submit" className="w-full bg-black text-white px-4 py-3 rounded-xl font-bold uppercase tracking-widest text-sm hover:bg-gray-800 transition-colors">
+            Accedi
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  const fetchSettings = async () => {
+    try {
+      const { data, error } = await supabase.from('settings').select('*');
+      if (error) {
+        if (error.code === '42P01') {
+          // Table doesn't exist, ignore gracefully
+          console.warn('Settings table not found. Please run the updated SQL schema.');
+          return;
+        }
+        throw error;
+      }
+      if (data) {
+        const names: Record<string, string> = {};
+        data.forEach(setting => {
+          if (setting.key.endsWith('_name')) {
+            const galleryKey = setting.key.replace('_name', '').replace(/_/g, ' ');
+            names[galleryKey] = setting.value;
+          }
+        });
+        setGalleryNames(names);
+      }
+    } catch (err: any) {
+      console.error('Error fetching settings:', err.message);
+    }
+  };
 
   const fetchWorks = async () => {
     try {
@@ -47,19 +125,57 @@ export default function AdminPanel() {
     setIsEditing(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this work?')) return;
+  const handleDelete = (id: string) => {
+    setItemToDelete(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      const { error } = await supabase.from('works').delete().eq('id', id);
+      // First delete related images to avoid foreign key constraint errors
+      await supabase.from('work_images').delete().eq('work_id', itemToDelete);
+      
+      // Then delete the work itself
+      const { error } = await supabase.from('works').delete().eq('id', itemToDelete);
       if (error) throw error;
+      setItemToDelete(null);
       fetchWorks();
     } catch (err: any) {
-      alert(err.message);
+      setAdminMessage({ text: 'Errore durante l\'eliminazione: ' + err.message, type: 'error' });
+      setItemToDelete(null);
+    }
+  };
+
+  const toggleCollapse = (groupName: string) => {
+    setCollapsedGalleries(prev => 
+      prev.includes(groupName) ? prev.filter(g => g !== groupName) : [...prev, groupName]
+    );
+  };
+
+  const saveGalleryName = async (groupName: string) => {
+    if (!newGalleryName.trim()) {
+      setRenamingGallery(null);
+      return;
+    }
+    
+    const key = `${groupName.replace(/ /g, '_')}_name`;
+    try {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ key, value: newGalleryName });
+        
+      if (error) throw error;
+      
+      setGalleryNames(prev => ({ ...prev, [groupName]: newGalleryName }));
+      setRenamingGallery(null);
+      setAdminMessage({ text: 'Galleria rinominata con successo!', type: 'success' });
+    } catch (err: any) {
+      setAdminMessage({ text: 'Errore: ' + err.message, type: 'error' });
     }
   };
 
   if (isEditing) {
-    return <EditWork work={editingWork} onClose={() => { setIsEditing(false); setEditingWork(null); fetchWorks(); }} />;
+    return <EditWork work={editingWork} onClose={() => { setIsEditing(false); setEditingWork(null); fetchWorks(); }} setAdminMessage={setAdminMessage} />;
   }
 
   // Group works by group_name
@@ -73,19 +189,24 @@ export default function AdminPanel() {
     <div className="min-h-screen bg-white text-redd-dark font-sans pb-24">
       {/* Main Site Header (Admin Mode) */}
       <nav className="w-full flex justify-between items-center px-6 md:px-12 py-6 border-b border-gray-100">
-        <div className="flex flex-col">
+        <Link 
+          to="/" 
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.href = '/';
+          }}
+          className="flex flex-col hover:opacity-80 transition-opacity"
+        >
           <div className="text-xl font-bold tracking-tight uppercase">LORENZO PACI</div>
           <div className="text-[10px] tracking-[0.2em] uppercase text-gray-400">CREATIVE VISIONARY</div>
-        </div>
+        </Link>
         <div className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-widest text-gray-400">
           <Link to="/" className="hover:text-black transition-colors">ALL WORKS</Link>
           <Link to="/" className="hover:text-black transition-colors">GRAPHIC</Link>
           <Link to="/" className="hover:text-black transition-colors">PHOTO</Link>
           <Link to="/" className="hover:text-black transition-colors">PROJECTS</Link>
-          <Link to="/" className="hover:text-black transition-colors">BIO</Link>
-          <button className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-full hover:bg-gray-800 transition-colors">
-            <Lock size={14} /> ADMIN PANEL
-          </button>
+          <Link to="/about" className="hover:text-black transition-colors">ABOUT</Link>
+          <Link to="/contact" className="hover:text-black transition-colors">CONTACT</Link>
         </div>
       </nav>
 
@@ -119,133 +240,322 @@ export default function AdminPanel() {
           </div>
         )}
 
-        {/* GALLERIE Section */}
-        <div className="mb-16">
-          <h2 className="text-4xl md:text-5xl font-serif uppercase tracking-tighter mb-8">GALLERIE</h2>
-          
-          <div className="border border-gray-200 rounded-[2rem] p-8 md:p-12">
+        {/* Tabs */}
+        <div className="flex gap-4 mb-12 border-b border-gray-200">
+          <button 
+            onClick={() => setActiveTab('galleries')}
+            className={`pb-4 text-sm font-bold uppercase tracking-widest transition-colors ${activeTab === 'galleries' ? 'border-b-2 border-black text-black' : 'text-gray-400 hover:text-black'}`}
+          >
+            Gallerie
+          </button>
+          <button 
+            onClick={() => setActiveTab('sections')}
+            className={`pb-4 text-sm font-bold uppercase tracking-widest transition-colors ${activeTab === 'sections' ? 'border-b-2 border-black text-black' : 'text-gray-400 hover:text-black'}`}
+          >
+            Sezioni Sito
+          </button>
+        </div>
+
+        {activeTab === 'galleries' && (
+          <div className="mb-16">
+            <h2 className="text-4xl md:text-5xl font-serif uppercase tracking-tighter mb-8">GALLERIE</h2>
+            
+            <div className="border border-gray-200 rounded-[2rem] p-8 md:p-12">
             {['galleria 3', 'galleria 2', 'galleria 1'].map((galleryName) => (
               <div key={galleryName} className="mb-16 last:mb-0">
                 <div className="flex items-center gap-4 mb-8">
-                  <h3 className="text-2xl font-bold">{galleryName}</h3>
-                  <button className="bg-black text-white text-xs uppercase tracking-widest px-4 py-2 rounded-full hover:bg-gray-800 transition-colors">
-                    Rinomina Galleria
-                  </button>
+                  {renamingGallery === galleryName ? (
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text" 
+                        value={newGalleryName} 
+                        onChange={(e) => setNewGalleryName(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-xl font-bold"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveGalleryName(galleryName);
+                          if (e.key === 'Escape') setRenamingGallery(null);
+                        }}
+                      />
+                      <button onClick={() => saveGalleryName(galleryName)} className="bg-black text-white text-xs uppercase tracking-widest px-3 py-1 rounded hover:bg-gray-800">Save</button>
+                      <button onClick={() => setRenamingGallery(null)} className="text-gray-500 text-xs uppercase tracking-widest px-3 py-1 hover:text-black">Cancel</button>
+                    </div>
+                  ) : (
+                    <h3 className="text-2xl font-bold">{galleryNames[galleryName] || galleryName}</h3>
+                  )}
+                  
+                  {renamingGallery !== galleryName && (
+                    <button 
+                      onClick={() => {
+                        setRenamingGallery(galleryName);
+                        setNewGalleryName(galleryNames[galleryName] || galleryName);
+                      }}
+                      className="bg-black text-white text-xs uppercase tracking-widest px-4 py-2 rounded-full hover:bg-gray-800 transition-colors"
+                    >
+                      Rinomina Galleria
+                    </button>
+                  )}
                   <button 
                     onClick={() => handleAddNew(galleryName)}
                     className="bg-black text-white text-xs uppercase tracking-widest px-4 py-2 rounded-full hover:bg-gray-800 transition-colors flex items-center gap-2"
                   >
                     <Plus size={14} /> Add New Work
                   </button>
-                  <button className="ml-2">
-                    <Plus size={24} className="text-black" />
+                  <button onClick={() => toggleCollapse(galleryName)} className="ml-2 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+                    <span className="text-2xl leading-none">{collapsedGalleries.includes(galleryName) ? '+' : '-'}</span>
                   </button>
                 </div>
 
-                {groupedWorks[galleryName] && groupedWorks[galleryName].length > 0 ? (
-                  <div className="w-full">
-                    <div className="grid grid-cols-12 gap-4 text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-4">
-                      <div className="col-span-2">Preview</div>
-                      <div className="col-span-3">Title</div>
-                      <div className="col-span-3">Category</div>
-                      <div className="col-span-2">Featured</div>
-                      <div className="col-span-2 text-right">Actions</div>
-                    </div>
-                    
-                    <div className="flex flex-col gap-2">
-                      {groupedWorks[galleryName].map((work) => (
-                        <WorkRow 
-                          key={work.id}
-                          title={work.title} 
-                          category={work.category} 
-                          image={work.cover_image_url || "https://picsum.photos/seed/placeholder/100/100"} 
-                          onEdit={() => handleEdit(work)} 
-                          onDelete={() => handleDelete(work.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-400 italic px-4">Nessun lavoro in questa galleria.</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* SEZIONI Section */}
-        <div>
-          <h2 className="text-4xl md:text-5xl font-serif uppercase tracking-tighter mb-8">SEZIONI</h2>
-          
-          <div className="border border-gray-200 rounded-[2rem] p-8 md:p-12">
-            {['sezione 1', 'sezione 2', 'sezione 3'].map((sectionName) => (
-              <div key={sectionName} className="mb-12 last:mb-0">
-                <div className="flex items-center gap-4 mb-8">
-                  <h3 className="text-2xl font-bold">{sectionName}</h3>
-                  <button className="bg-black text-white text-xs uppercase tracking-widest px-4 py-2 rounded-full hover:bg-gray-800 transition-colors">
-                    Rinomina Galleria
-                  </button>
-                  <button 
-                    onClick={() => handleAddNew(sectionName)}
-                    className="bg-black text-white text-xs uppercase tracking-widest px-4 py-2 rounded-full hover:bg-gray-800 transition-colors flex items-center gap-2"
-                  >
-                    <Plus size={14} /> Add New Work
-                  </button>
-                </div>
-
-                {groupedWorks[sectionName] && groupedWorks[sectionName].length > 0 ? (
-                  <div className="w-full mb-8">
-                    <div className="grid grid-cols-12 gap-4 text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-4">
-                      <div className="col-span-2">Preview</div>
-                      <div className="col-span-3">Title</div>
-                      <div className="col-span-3">Category</div>
-                      <div className="col-span-2">Featured</div>
-                      <div className="col-span-2 text-right">Actions</div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {groupedWorks[sectionName].map((work) => (
-                        <WorkRow 
-                          key={work.id}
-                          title={work.title} 
-                          category={work.category} 
-                          image={work.cover_image_url || "https://picsum.photos/seed/placeholder/100/100"} 
-                          onEdit={() => handleEdit(work)} 
-                          onDelete={() => handleDelete(work.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-400 italic px-4 mb-8">Nessun lavoro in questa sezione.</div>
-                )}
-
-                {/* Colonne (Only for Sezione 2 as an example, or you can make it dynamic) */}
-                {sectionName === 'sezione 2' && (
-                  <div className="flex flex-col gap-4 pl-4 border-l-2 border-gray-100 ml-4">
-                    {[1, 2, 3, 4].map(col => (
-                      <div key={col} className="flex items-center gap-4">
-                        <h4 className="text-xl font-bold w-24">colonna {col}</h4>
-                        <button 
-                          onClick={() => handleAddNew(`${sectionName} - colonna ${col}`)}
-                          className="bg-black text-white text-xs uppercase tracking-widest px-4 py-2 rounded-full hover:bg-gray-800 transition-colors"
-                        >
-                          Modifica
-                        </button>
+                {!collapsedGalleries.includes(galleryName) && (
+                  groupedWorks[galleryName] && groupedWorks[galleryName].length > 0 ? (
+                    <div className="w-full">
+                      <div className="grid grid-cols-12 gap-4 text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-4">
+                        <div className="col-span-2">Preview</div>
+                        <div className="col-span-3">Title</div>
+                        <div className="col-span-3">Category</div>
+                        <div className="col-span-2">Featured</div>
+                        <div className="col-span-2 text-right">Actions</div>
                       </div>
-                    ))}
-                  </div>
+                      
+                      <div className="flex flex-col gap-2">
+                        {groupedWorks[galleryName].map((work) => (
+                          <WorkRow 
+                            key={work.id}
+                            title={work.title} 
+                            category={work.category} 
+                            image={work.cover_image_url || ""} 
+                            onEdit={() => handleEdit(work)} 
+                            onDelete={() => handleDelete(work.id)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-400 italic px-4">Nessun lavoro in questa galleria.</div>
+                  )
                 )}
               </div>
             ))}
           </div>
         </div>
+        )}
+
+        {activeTab === 'sections' && (
+          <SectionsEditor setAdminMessage={setAdminMessage} />
+        )}
 
       </div>
+
+      {/* Admin Message Toast */}
+      {adminMessage && (
+        <div className={`fixed bottom-8 right-8 z-[300] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 ${adminMessage.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+          {adminMessage.type === 'error' && <AlertCircle size={20} />}
+          <span className="font-bold uppercase tracking-widest text-xs">{adminMessage.text}</span>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full">
+            <h3 className="text-xl font-bold mb-4">Conferma eliminazione</h3>
+            <p className="text-gray-600 mb-8">Sei sicuro di voler eliminare questo lavoro? Questa azione non può essere annullata.</p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 font-bold uppercase tracking-widest text-xs hover:bg-gray-50 transition-colors"
+              >
+                Annulla
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-3 rounded-xl bg-red-600 text-white font-bold uppercase tracking-widest text-xs hover:bg-red-700 transition-colors"
+              >
+                Elimina
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function WorkRow({ title, category, image, onEdit, onDelete }: { title: string, category: string, image: string, onEdit: () => void, onDelete: () => void }) {
+function SectionsEditor({ setAdminMessage }: { setAdminMessage: (msg: { text: string, type: 'success' | 'error' } | null) => void }) {
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const { data, error } = await supabase.from('settings').select('*');
+      if (error) throw error;
+      if (data) {
+        const newSettings: Record<string, string> = {};
+        data.forEach(s => {
+          newSettings[s.key] = s.value;
+        });
+        setSettings(newSettings);
+      }
+    } catch (err: any) {
+      console.error('Error fetching settings:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (key: string, value: string) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updates = Object.entries(settings).map(([key, value]) => ({ key, value }));
+      for (const update of updates) {
+        await supabase.from('settings').upsert(update);
+      }
+      setAdminMessage({ text: 'Sezioni salvate con successo!', type: 'success' });
+    } catch (err: any) {
+      setAdminMessage({ text: 'Errore durante il salvataggio: ' + err.message, type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div>Caricamento sezioni...</div>;
+
+  const renderSectionFields = (sectionId: string, sectionName: string, hasSteps: boolean = false) => (
+    <div className="mb-12 border border-gray-200 rounded-[2rem] p-8 md:p-12">
+      <h3 className="text-3xl font-serif uppercase tracking-tighter mb-8">{sectionName}</h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Immagine di Sfondo (URL)</label>
+          <input 
+            type="text" 
+            value={settings[`${sectionId}_image_url`] || ''} 
+            onChange={(e) => handleChange(`${sectionId}_image_url`, e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
+            placeholder="https://..."
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Allineamento Titolo</label>
+          <select 
+            value={settings[`${sectionId}_title_align`] || 'left'} 
+            onChange={(e) => handleChange(`${sectionId}_title_align`, e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors bg-white"
+          >
+            <option value="left">Sinistra</option>
+            <option value="center">Centrato</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Sovratitolo</label>
+          <input 
+            type="text" 
+            value={settings[`${sectionId}_subtitle`] || ''} 
+            onChange={(e) => handleChange(`${sectionId}_subtitle`, e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
+          />
+        </div>
+        <div className="md:col-span-2">
+          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Titolo (max 2 righe)</label>
+          <textarea 
+            value={settings[`${sectionId}_title`] || ''} 
+            onChange={(e) => handleChange(`${sectionId}_title`, e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors min-h-[80px]"
+            rows={2}
+          />
+        </div>
+        <div className="md:col-span-2">
+          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Descrizione (max 2 righe)</label>
+          <textarea 
+            value={settings[`${sectionId}_description`] || ''} 
+            onChange={(e) => handleChange(`${sectionId}_description`, e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors min-h-[80px]"
+            rows={2}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Testo Pulsante Link</label>
+          <input 
+            type="text" 
+            value={settings[`${sectionId}_link_text`] || ''} 
+            onChange={(e) => handleChange(`${sectionId}_link_text`, e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">URL Pulsante Link</label>
+          <input 
+            type="text" 
+            value={settings[`${sectionId}_link_url`] || ''} 
+            onChange={(e) => handleChange(`${sectionId}_link_url`, e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
+          />
+        </div>
+      </div>
+
+      {hasSteps && (
+        <div className="mt-12 border-t border-gray-200 pt-8">
+          <h4 className="text-xl font-bold mb-6">Colonne / Step (Sezione 2)</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {[1, 2, 3, 4].map(step => (
+              <div key={step} className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+                <h5 className="font-bold mb-4">Colonna {step}</h5>
+                <div className="mb-4">
+                  <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Titolo</label>
+                  <input 
+                    type="text" 
+                    value={settings[`${sectionId}_step${step}_title`] || ''} 
+                    onChange={(e) => handleChange(`${sectionId}_step${step}_title`, e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:border-black transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Descrizione</label>
+                  <textarea 
+                    value={settings[`${sectionId}_step${step}_desc`] || ''} 
+                    onChange={(e) => handleChange(`${sectionId}_step${step}_desc`, e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:border-black transition-colors min-h-[80px]"
+                    rows={2}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-8">
+        <h2 className="text-4xl md:text-5xl font-serif uppercase tracking-tighter">SEZIONI SITO</h2>
+        <button 
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-black text-white px-8 py-3 rounded-full font-bold uppercase tracking-widest text-sm hover:bg-gray-800 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Salvataggio...' : 'Salva Tutte le Sezioni'}
+        </button>
+      </div>
+
+      {renderSectionFields('section1', 'Sezione 1 (Hero)')}
+      {renderSectionFields('section2', 'Sezione 2 (Processo)', true)}
+      {renderSectionFields('section3', 'Sezione 3 (Contatti)')}
+    </div>
+  );
+}
+
+function WorkRow({ title, category, image, onEdit, onDelete }: { key?: React.Key, title: string, category: string, image: string, onEdit: () => void, onDelete: () => void | Promise<void> }) {
   return (
     <div className="grid grid-cols-12 gap-4 items-center py-2 px-4 hover:bg-gray-50 rounded-xl transition-colors group">
       <div className="col-span-2">
@@ -270,9 +580,63 @@ function WorkRow({ title, category, image, onEdit, onDelete }: { title: string, 
   );
 }
 
-function EditWork({ work, onClose }: { work: Work | null, onClose: () => void }) {
+function EditWork({ work, onClose, setAdminMessage }: { work: Work | null, onClose: () => void, setAdminMessage: (msg: { text: string, type: 'success' | 'error' } | null) => void }) {
   const [formData, setFormData] = useState<Partial<Work>>(work || {});
   const [saving, setSaving] = useState(false);
+  const [galleryImages, setGalleryImages] = useState<{ id?: string, image_url: string, title?: string, description?: string, link?: string, display_order: number }[]>([]);
+  const [newImageUrl, setNewImageUrl] = useState('');
+  const [newImageTitle, setNewImageTitle] = useState('');
+  const [newImageDescription, setNewImageDescription] = useState('');
+  const [newImageLink, setNewImageLink] = useState('');
+
+  useEffect(() => {
+    if (work?.id) {
+      fetchGalleryImages();
+    }
+  }, [work?.id]);
+
+  const fetchGalleryImages = async () => {
+    if (!work?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('work_images')
+        .select('*')
+        .eq('work_id', work.id)
+        .order('display_order', { ascending: true });
+      if (error) {
+        if (error.code === '42P01') {
+          console.warn('work_images table not found. Please run the updated SQL schema.');
+          return;
+        }
+        throw error;
+      }
+      if (data) setGalleryImages(data);
+    } catch (err: any) {
+      console.error('Error fetching gallery images:', err.message);
+    }
+  };
+
+  const handleAddImage = () => {
+    if (!newImageUrl.trim()) return;
+    setGalleryImages(prev => [
+      ...prev, 
+      { 
+        image_url: newImageUrl, 
+        title: newImageTitle,
+        description: newImageDescription,
+        link: newImageLink,
+        display_order: prev.length 
+      }
+    ]);
+    setNewImageUrl('');
+    setNewImageTitle('');
+    setNewImageDescription('');
+    setNewImageLink('');
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setGalleryImages(prev => prev.filter((_, i) => i !== index));
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -283,16 +647,41 @@ function EditWork({ work, onClose }: { work: Work | null, onClose: () => void })
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (work?.id) {
-        const { error } = await supabase.from('works').update(formData).eq('id', work.id);
+      let workId = work?.id;
+      
+      if (workId) {
+        const { error } = await supabase.from('works').update(formData).eq('id', workId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('works').insert([formData]);
+        const { data, error } = await supabase.from('works').insert([formData]).select().single();
         if (error) throw error;
+        workId = data.id;
       }
+      setAdminMessage({ text: 'Lavoro salvato con successo!', type: 'success' });
+
+      // Handle gallery images
+      if (workId) {
+        // Delete existing images
+        await supabase.from('work_images').delete().eq('work_id', workId);
+        
+        // Insert new images
+        if (galleryImages.length > 0) {
+          const imagesToInsert = galleryImages.map((img, index) => ({
+            work_id: workId,
+            image_url: img.image_url,
+            title: img.title,
+            description: img.description,
+            link: img.link,
+            display_order: index
+          }));
+          const { error: imgError } = await supabase.from('work_images').insert(imagesToInsert);
+          if (imgError) throw imgError;
+        }
+      }
+
       onClose();
     } catch (err: any) {
-      alert(err.message);
+      setAdminMessage({ text: 'Errore durante il salvataggio: ' + err.message, type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -302,19 +691,24 @@ function EditWork({ work, onClose }: { work: Work | null, onClose: () => void })
     <div className="min-h-screen bg-white text-redd-dark font-sans pb-24">
       {/* Main Site Header (Admin Mode) */}
       <nav className="w-full flex justify-between items-center px-6 md:px-12 py-6 border-b border-gray-100">
-        <div className="flex flex-col">
+        <Link 
+          to="/" 
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.href = '/';
+          }}
+          className="flex flex-col hover:opacity-80 transition-opacity"
+        >
           <div className="text-xl font-bold tracking-tight uppercase">LORENZO PACI</div>
           <div className="text-[10px] tracking-[0.2em] uppercase text-gray-400">CREATIVE VISIONARY</div>
-        </div>
+        </Link>
         <div className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-widest text-gray-400">
           <Link to="/" className="hover:text-black transition-colors">ALL WORKS</Link>
           <Link to="/" className="hover:text-black transition-colors">GRAPHIC</Link>
           <Link to="/" className="hover:text-black transition-colors">PHOTO</Link>
           <Link to="/" className="hover:text-black transition-colors">PROJECTS</Link>
-          <Link to="/" className="hover:text-black transition-colors">BIO</Link>
-          <button className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-full hover:bg-gray-800 transition-colors">
-            <Lock size={14} /> ADMIN PANEL
-          </button>
+          <Link to="/about" className="hover:text-black transition-colors">ABOUT</Link>
+          <Link to="/contact" className="hover:text-black transition-colors">CONTACT</Link>
         </div>
       </nav>
 
@@ -373,12 +767,109 @@ function EditWork({ work, onClose }: { work: Work | null, onClose: () => void })
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">Gallery Items</label>
-                  <button className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800">
-                    <Plus size={14} />
-                  </button>
                 </div>
-                <div className="border border-dashed border-gray-300 rounded-xl p-8 flex justify-center items-center text-gray-400 text-sm hover:bg-gray-50 transition-colors cursor-pointer">
-                  + Add first gallery item (Coming Soon)
+                
+                <div className="flex flex-col gap-4">
+                  {galleryImages.length > 0 && (
+                    <p className="text-[10px] text-gray-400 uppercase tracking-widest italic mb-2">
+                      * Ricorda di cliccare "Salva Modifiche" in fondo per confermare le eliminazioni
+                    </p>
+                  )}
+                  {galleryImages.map((img, index) => (
+                    <div key={index} className="flex flex-col gap-2 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                      <div className="flex items-center gap-4">
+                        <img src={img.image_url} alt={`Gallery ${index}`} className="w-16 h-16 object-cover rounded-lg" />
+                        <input 
+                          type="text" 
+                          value={img.image_url} 
+                          readOnly 
+                          className="flex-1 bg-transparent border-none focus:outline-none text-sm text-gray-500 truncate"
+                        />
+                        <button 
+                          onClick={() => handleRemoveImage(index)}
+                          className="w-8 h-8 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-100 hover:text-red-600 hover:border-red-200 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <input 
+                          type="text" 
+                          placeholder="Title (optional)" 
+                          value={img.title || ''} 
+                          onChange={(e) => {
+                            const newImages = [...galleryImages];
+                            newImages[index].title = e.target.value;
+                            setGalleryImages(newImages);
+                          }}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Link URL (optional)" 
+                          value={img.link || ''} 
+                          onChange={(e) => {
+                            const newImages = [...galleryImages];
+                            newImages[index].link = e.target.value;
+                            setGalleryImages(newImages);
+                          }}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
+                        />
+                      </div>
+                      <textarea 
+                        placeholder="Description (optional)" 
+                        value={img.description || ''} 
+                        onChange={(e) => {
+                          const newImages = [...galleryImages];
+                          newImages[index].description = e.target.value;
+                          setGalleryImages(newImages);
+                        }}
+                        rows={2}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors resize-none"
+                      />
+                    </div>
+                  ))}
+
+                  <div className="flex flex-col gap-2 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Add New Image</div>
+                    <input 
+                      type="text" 
+                      value={newImageUrl}
+                      onChange={(e) => setNewImageUrl(e.target.value)}
+                      placeholder="Image URL (required)" 
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input 
+                        type="text" 
+                        value={newImageTitle}
+                        onChange={(e) => setNewImageTitle(e.target.value)}
+                        placeholder="Title (optional)" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
+                      />
+                      <input 
+                        type="text" 
+                        value={newImageLink}
+                        onChange={(e) => setNewImageLink(e.target.value)}
+                        placeholder="Link URL (optional)" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
+                      />
+                    </div>
+                    <textarea 
+                      value={newImageDescription}
+                      onChange={(e) => setNewImageDescription(e.target.value)}
+                      placeholder="Description (optional)" 
+                      rows={2}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors resize-none"
+                    />
+                    <button 
+                      onClick={handleAddImage}
+                      disabled={!newImageUrl.trim()}
+                      className="mt-2 bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors font-bold text-xs uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                    >
+                      Add Image
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -411,10 +902,14 @@ function EditWork({ work, onClose }: { work: Work | null, onClose: () => void })
 
           <div className="flex justify-end items-center gap-4 mt-12 pt-8 border-t border-gray-100">
             <button onClick={onClose} className="text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-black transition-colors">
-              Cancel
+              Annulla
             </button>
-            <button onClick={handleSave} disabled={saving} className="bg-black text-white text-sm font-bold uppercase tracking-widest px-8 py-4 rounded-full hover:bg-gray-800 transition-colors flex items-center gap-2 disabled:opacity-50">
-              <Edit2 size={16} /> {saving ? 'Saving...' : (work?.id ? 'Update Work' : 'Create Work')}
+            <button 
+              onClick={handleSave} 
+              disabled={saving} 
+              className="bg-black text-white text-sm font-bold uppercase tracking-widest px-12 py-4 rounded-full hover:bg-gray-800 transition-colors flex items-center gap-2 disabled:opacity-50 shadow-lg"
+            >
+              {saving ? 'Salvataggio...' : 'Salva Modifiche'}
             </button>
           </div>
         </div>
