@@ -500,6 +500,8 @@ const HorizontalGallery = ({ title, galleryId, projects, isLast = false, onMenuC
   const [activeIndex, setActiveIndex] = useState(0);
   const [isWrapping, setIsWrapping] = useState(false);
 
+  const isDraggingRef = useRef(false);
+
   // Double the projects to allow seamless looping
   const displayProjects = projects.length > 1 ? [...projects, ...projects] : projects;
 
@@ -549,6 +551,11 @@ const HorizontalGallery = ({ title, galleryId, projects, isLast = false, onMenuC
     } else if (swipe > 10 || swipeVelocity > 100) {
       handlePrev();
     }
+
+    // Reset dragging flag after a short delay to allow the tap event to be blocked
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 100);
   };
 
   const getStyles = (rel: number) => {
@@ -626,26 +633,31 @@ const HorizontalGallery = ({ title, galleryId, projects, isLast = false, onMenuC
 
       {/* Images Layer */}
       <div className="absolute inset-x-0 top-0 bottom-4 md:bottom-6">
-        {displayProjects.map((proj, i) => {
-          const rel = i - activeIndex;
-          if (rel < -1 || rel > 4) return null;
-          const styles = getStyles(rel);
+            {displayProjects.map((proj, i) => {
+              const rel = i - activeIndex;
+              if (rel < -1 || rel > 4) return null;
+              const styles = getStyles(rel);
 
-          return (
-            <motion.div
-              key={`${i}-${activeIndex > projects.length ? 'set2' : 'set1'}`}
-              initial={false}
-              animate={styles}
-              transition={isWrapping ? { duration: 0 } : { duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute overflow-hidden shadow-2xl cursor-grab active:cursor-grabbing group"
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.1}
-              onDragEnd={handleDragEnd}
-              onClick={() => {
-                if (rel === 0 && onOpenLightbox) onOpenLightbox(proj);
-              }}
-            >
+              return (
+                <motion.div
+                  key={i}
+                  initial={false}
+                  animate={styles}
+                  transition={isWrapping ? { duration: 0 } : { duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute overflow-hidden shadow-2xl cursor-grab active:cursor-grabbing group select-none"
+                  drag="x"
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.1}
+                  onDragStart={() => {
+                    isDraggingRef.current = true;
+                  }}
+                  onDragEnd={handleDragEnd}
+                  onTap={() => {
+                    if (!isDraggingRef.current && rel === 0 && onOpenLightbox) {
+                      onOpenLightbox(proj);
+                    }
+                  }}
+                >
               <ParallaxImage 
                 src={proj.cover_image_url || proj.image || null} 
                 alt={proj.title} 
