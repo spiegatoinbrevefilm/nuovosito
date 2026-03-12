@@ -1,7 +1,97 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Plus, Edit2, Trash2, Lock, AlertCircle } from 'lucide-react';
+import { LogOut, Plus, Edit2, Trash2, Lock, AlertCircle, Upload, GripVertical } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase, type Work } from './lib/supabase';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+function ImageField({ 
+  label, 
+  value, 
+  onChange, 
+  placeholder = "https://..." 
+}: { 
+  label: string, 
+  value: string, 
+  onChange: (url: string) => void,
+  placeholder?: string
+}) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath);
+
+      onChange(publicUrl);
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      alert('Errore durante l\'upload: ' + err.message + '\n\nSuggerimenti:\n1. Verifica che il nome del bucket sia "images" (tutto minuscolo).\n2. Assicurati che la policy su Supabase permetta l\'accesso agli utenti "authenticated".');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">{label}</label>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <input 
+            type="text" 
+            value={value} 
+            onChange={(e) => onChange(e.target.value)} 
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors pr-12" 
+            placeholder={placeholder}
+          />
+          {value && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg overflow-hidden border border-gray-100">
+              <img src={value} alt="Preview" className="w-full h-full object-cover" />
+            </div>
+          )}
+        </div>
+        <label className={`shrink-0 w-12 h-12 flex items-center justify-center rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+          <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
+          {uploading ? (
+            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Upload size={18} />
+          )}
+        </label>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminPanel() {
   const [isEditing, setIsEditing] = useState(false);
@@ -15,10 +105,29 @@ export default function AdminPanel() {
   const [newGalleryName, setNewGalleryName] = useState('');
   const [activeTab, setActiveTab] = useState<'galleries' | 'sections'>('galleries');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [adminMessage, setAdminMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
   const navigate = useNavigate();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setIsAuthenticated(true);
+      }
+      setLoading(false);
+    };
+    checkSession();
+  }, []);
 
   useEffect(() => {
     if (adminMessage) {
@@ -33,19 +142,40 @@ export default function AdminPanel() {
     if (isSupabaseConfigured && isAuthenticated) {
       fetchWorks();
       fetchSettings();
-    } else {
-      setLoading(false);
     }
   }, [isSupabaseConfigured, isAuthenticated]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'admin') {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
       setIsAuthenticated(true);
-    } else {
-      setAdminMessage({ text: 'Password errata', type: 'error' });
+      setAdminMessage({ text: 'Accesso eseguito!', type: 'success' });
+    } catch (err: any) {
+      setAdminMessage({ text: 'Errore: ' + err.message, type: 'error' });
+    } finally {
+      setLoading(false);
     }
   };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsAuthenticated(false);
+    navigate('/');
+  };
+
+  if (loading && !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -54,6 +184,19 @@ export default function AdminPanel() {
           <div className="flex flex-col items-center mb-8">
             <Lock size={32} className="mb-4" />
             <h1 className="text-2xl font-bold uppercase tracking-widest">Admin Login</h1>
+            <p className="text-xs text-gray-400 mt-2 text-center">Usa le tue credenziali Supabase</p>
+          </div>
+          <div className="mb-4">
+            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Email</label>
+            <input 
+              type="email" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
+              placeholder="admin@example.com"
+              required
+              autoFocus
+            />
           </div>
           <div className="mb-6">
             <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Password</label>
@@ -62,12 +205,22 @@ export default function AdminPanel() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
-              autoFocus
+              required
             />
           </div>
-          <button type="submit" className="w-full bg-black text-white px-4 py-3 rounded-xl font-bold uppercase tracking-widest text-sm hover:bg-gray-800 transition-colors">
-            Accedi
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-black text-white px-4 py-3 rounded-xl font-bold uppercase tracking-widest text-sm hover:bg-gray-800 transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Accesso in corso...' : 'Accedi'}
           </button>
+
+          {adminMessage && (
+            <div className={`mt-4 p-3 rounded-lg text-xs font-bold text-center ${adminMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              {adminMessage.text}
+            </div>
+          )}
         </form>
       </div>
     );
@@ -104,14 +257,55 @@ export default function AdminPanel() {
       const { data, error } = await supabase
         .from('works')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('display_order', { ascending: true });
       
-      if (error) throw error;
-      setWorks(data || []);
+      if (error) {
+        // Fallback to created_at if display_order doesn't exist yet
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('works')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (fallbackError) throw fallbackError;
+        setWorks(fallbackData || []);
+      } else {
+        setWorks(data || []);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent, groupName: string) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const groupWorks = works.filter((w: Work) => w.group_name === groupName);
+    const oldIndex = groupWorks.findIndex((w: Work) => w.id === active.id);
+    const newIndex = groupWorks.findIndex((w: Work) => w.id === over.id);
+
+    const newGroupWorks = arrayMove(groupWorks, oldIndex, newIndex);
+    
+    // Update local state immediately for smooth UI
+    const otherWorks = works.filter((w: Work) => w.group_name !== groupName);
+    const updatedWorks = [...otherWorks, ...newGroupWorks];
+    setWorks(updatedWorks);
+
+    // Persist to DB
+    try {
+      const updates = newGroupWorks.map((work: Work, index: number) => ({
+        id: work.id,
+        display_order: index
+      }));
+
+      for (const update of updates) {
+        await supabase.from('works').update({ display_order: update.display_order }).eq('id', update.id);
+      }
+      setAdminMessage({ text: 'Ordine salvato!', type: 'success' });
+    } catch (err: any) {
+      console.error('Error saving order:', err);
+      setAdminMessage({ text: 'Errore nel salvataggio ordine: ' + err.message, type: 'error' });
     }
   };
 
@@ -216,7 +410,7 @@ export default function AdminPanel() {
           <p className="text-xs tracking-[0.2em] uppercase text-gray-400 font-bold mb-2">MANAGEMENT</p>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight">Admin Dashboard</h1>
         </div>
-        <button onClick={() => navigate('/')} className="flex items-center gap-2 border border-gray-300 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-colors">
+        <button onClick={handleLogout} className="flex items-center gap-2 border border-gray-300 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-colors">
           <LogOut size={14} /> LOGOUT
         </button>
       </div>
@@ -310,25 +504,35 @@ export default function AdminPanel() {
                   groupedWorks[galleryName] && groupedWorks[galleryName].length > 0 ? (
                     <div className="w-full">
                       <div className="grid grid-cols-12 gap-4 text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-4">
+                        <div className="col-span-1"></div>
                         <div className="col-span-2">Preview</div>
                         <div className="col-span-3">Title</div>
-                        <div className="col-span-3">Category</div>
+                        <div className="col-span-2">Category</div>
                         <div className="col-span-2">Featured</div>
                         <div className="col-span-2 text-right">Actions</div>
                       </div>
                       
-                      <div className="flex flex-col gap-2">
-                        {groupedWorks[galleryName].map((work) => (
-                          <WorkRow 
-                            key={work.id}
-                            title={work.title} 
-                            category={work.category} 
-                            image={work.cover_image_url || ""} 
-                            onEdit={() => handleEdit(work)} 
-                            onDelete={() => handleDelete(work.id)}
-                          />
-                        ))}
-                      </div>
+                      <DndContext 
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={(e) => handleDragEnd(e, galleryName)}
+                      >
+                        <SortableContext 
+                          items={groupedWorks[galleryName].map(w => w.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className="flex flex-col gap-2">
+                            {groupedWorks[galleryName].map((work) => (
+                              <SortableWorkRow 
+                                key={work.id}
+                                work={work}
+                                onEdit={() => handleEdit(work)} 
+                                onDelete={() => handleDelete(work.id)}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
                     </div>
                   ) : (
                     <div className="text-sm text-gray-400 italic px-4">Nessun lavoro in questa galleria.</div>
@@ -434,16 +638,11 @@ function SectionsEditor({ setAdminMessage }: { setAdminMessage: (msg: { text: st
       <h3 className="text-3xl font-serif uppercase tracking-tighter mb-8">{sectionName}</h3>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div>
-          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Immagine di Sfondo (URL)</label>
-          <input 
-            type="text" 
-            value={settings[`${sectionId}_image_url`] || ''} 
-            onChange={(e) => handleChange(`${sectionId}_image_url`, e.target.value)}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
-            placeholder="https://..."
-          />
-        </div>
+        <ImageField 
+          label="Immagine di Sfondo" 
+          value={settings[`${sectionId}_image_url`] || ''} 
+          onChange={(url) => handleChange(`${sectionId}_image_url`, url)} 
+        />
         <div>
           <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Allineamento Titolo</label>
           <select 
@@ -555,11 +754,153 @@ function SectionsEditor({ setAdminMessage }: { setAdminMessage: (msg: { text: st
   );
 }
 
+function SortableWorkRow({ work, onEdit, onDelete }: { key?: React.Key, work: Work, onEdit: () => void, onDelete: () => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: work.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 1,
+    position: 'relative' as const,
+  };
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      className={`grid grid-cols-12 gap-4 items-center py-2 px-4 bg-white border border-transparent hover:border-gray-200 hover:bg-gray-50 rounded-xl transition-all group ${isDragging ? 'shadow-xl border-gray-200 opacity-50' : ''}`}
+    >
+      <div className="col-span-1 flex items-center">
+        <button 
+          {...attributes} 
+          {...listeners} 
+          className="cursor-grab active:cursor-grabbing p-2 text-gray-300 hover:text-gray-600 transition-colors"
+        >
+          <GripVertical size={18} />
+        </button>
+      </div>
+      <div className="col-span-2">
+        {work.cover_image_url ? (
+          <img src={work.cover_image_url} alt={work.title} className="w-12 h-12 rounded-lg object-cover" />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-gray-100" />
+        )}
+      </div>
+      <div className="col-span-3 font-bold">{work.title}</div>
+      <div className="col-span-2">
+        <span className="bg-gray-100 text-gray-600 text-[10px] uppercase tracking-widest px-2 py-1 rounded font-bold">
+          {work.category}
+        </span>
+      </div>
+      <div className="col-span-2 flex items-center justify-center">
+        {work.is_featured && (
+          <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" title="In evidenza" />
+        )}
+      </div>
+      <div className="col-span-2 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button onClick={onEdit} className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800">
+          <Edit2 size={14} />
+        </button>
+        <button onClick={onDelete} className="w-8 h-8 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-100 hover:text-red-600 hover:border-red-200 transition-colors">
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SortableImageItem({ img, index, onRemove, onUpdate }: { key?: React.Key, img: any, index: number, onRemove: (i: number) => void, onUpdate: (i: number, data: any) => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: img.id || `temp-${index}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 1,
+    position: 'relative' as const,
+  };
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      className={`flex flex-col gap-2 bg-gray-50 p-4 rounded-xl border border-gray-100 transition-all ${isDragging ? 'shadow-xl border-gray-300 opacity-50' : ''}`}
+    >
+      <div className="flex items-center gap-4">
+        <button 
+          {...attributes} 
+          {...listeners} 
+          className="cursor-grab active:cursor-grabbing p-2 text-gray-300 hover:text-gray-600 transition-colors"
+        >
+          <GripVertical size={18} />
+        </button>
+        {img.image_url ? (
+          <img src={img.image_url} alt={`Gallery ${index}`} className="w-16 h-16 object-cover rounded-lg" />
+        ) : (
+          <div className="w-16 h-16 bg-gray-100 rounded-lg" />
+        )}
+        <input 
+          type="text" 
+          value={img.image_url} 
+          readOnly 
+          className="flex-1 bg-transparent border-none focus:outline-none text-sm text-gray-500 truncate"
+        />
+        <button 
+          onClick={() => onRemove(index)}
+          className="w-8 h-8 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-100 hover:text-red-600 hover:border-red-200 transition-colors"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <input 
+          type="text" 
+          placeholder="Title (optional)" 
+          value={img.title || ''} 
+          onChange={(e) => onUpdate(index, { title: e.target.value })}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
+        />
+        <input 
+          type="text" 
+          placeholder="Link URL (optional)" 
+          value={img.link || ''} 
+          onChange={(e) => onUpdate(index, { link: e.target.value })}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
+        />
+      </div>
+      <textarea 
+        placeholder="Description (optional)" 
+        value={img.description || ''} 
+        onChange={(e) => onUpdate(index, { description: e.target.value })}
+        rows={2}
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors resize-none"
+      />
+    </div>
+  );
+}
+
 function WorkRow({ title, category, image, onEdit, onDelete }: { key?: React.Key, title: string, category: string, image: string, onEdit: () => void, onDelete: () => void | Promise<void> }) {
   return (
     <div className="grid grid-cols-12 gap-4 items-center py-2 px-4 hover:bg-gray-50 rounded-xl transition-colors group">
       <div className="col-span-2">
-        <img src={image} alt={title} className="w-12 h-12 rounded-lg object-cover" />
+        {image ? (
+          <img src={image} alt={title} className="w-12 h-12 rounded-lg object-cover" />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-gray-100" />
+        )}
       </div>
       <div className="col-span-3 font-bold">{title}</div>
       <div className="col-span-3">
@@ -637,6 +978,23 @@ function EditWork({ work, onClose, setAdminMessage }: { work: Work | null, onClo
   const handleRemoveImage = (index: number) => {
     setGalleryImages(prev => prev.filter((_, i) => i !== index));
   };
+
+  const handleImageDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = galleryImages.findIndex(img => (img.id || `temp-${galleryImages.indexOf(img)}`) === active.id);
+    const newIndex = galleryImages.findIndex(img => (img.id || `temp-${galleryImages.indexOf(img)}`) === over.id);
+
+    setGalleryImages(arrayMove(galleryImages, oldIndex, newIndex));
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -749,10 +1107,11 @@ function EditWork({ work, onClose, setAdminMessage }: { work: Work | null, onClo
                 <span className="text-sm font-bold uppercase tracking-widest">Metti in evidenza nella home page</span>
               </label>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Cover Image URL</label>
-                <input type="text" name="cover_image_url" value={formData.cover_image_url || ''} onChange={handleChange} className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors" />
-              </div>
+              <ImageField 
+                label="Cover Image" 
+                value={formData.cover_image_url || ''} 
+                onChange={(url) => setFormData(prev => ({ ...prev, cover_image_url: url }))} 
+              />
 
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Cover Image Caption (Lightbox Only)</label>
@@ -772,72 +1131,43 @@ function EditWork({ work, onClose, setAdminMessage }: { work: Work | null, onClo
                 <div className="flex flex-col gap-4">
                   {galleryImages.length > 0 && (
                     <p className="text-[10px] text-gray-400 uppercase tracking-widest italic mb-2">
-                      * Ricorda di cliccare "Salva Modifiche" in fondo per confermare le eliminazioni
+                      * Trascina le immagini per riordinarle. Ricorda di cliccare "Salva Modifiche" in fondo.
                     </p>
                   )}
-                  {galleryImages.map((img, index) => (
-                    <div key={index} className="flex flex-col gap-2 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                      <div className="flex items-center gap-4">
-                        <img src={img.image_url} alt={`Gallery ${index}`} className="w-16 h-16 object-cover rounded-lg" />
-                        <input 
-                          type="text" 
-                          value={img.image_url} 
-                          readOnly 
-                          className="flex-1 bg-transparent border-none focus:outline-none text-sm text-gray-500 truncate"
-                        />
-                        <button 
-                          onClick={() => handleRemoveImage(index)}
-                          className="w-8 h-8 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-100 hover:text-red-600 hover:border-red-200 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                  
+                  <DndContext 
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleImageDragEnd}
+                  >
+                    <SortableContext 
+                      items={galleryImages.map((img, i) => img.id || `temp-${i}`)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="flex flex-col gap-4">
+                        {galleryImages.map((img, index) => (
+                          <SortableImageItem 
+                            key={img.id || `temp-${index}`}
+                            img={img}
+                            index={index}
+                            onRemove={handleRemoveImage}
+                            onUpdate={(i, data) => {
+                              const newImages = [...galleryImages];
+                              newImages[i] = { ...newImages[i], ...data };
+                              setGalleryImages(newImages);
+                            }}
+                          />
+                        ))}
                       </div>
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <input 
-                          type="text" 
-                          placeholder="Title (optional)" 
-                          value={img.title || ''} 
-                          onChange={(e) => {
-                            const newImages = [...galleryImages];
-                            newImages[index].title = e.target.value;
-                            setGalleryImages(newImages);
-                          }}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
-                        />
-                        <input 
-                          type="text" 
-                          placeholder="Link URL (optional)" 
-                          value={img.link || ''} 
-                          onChange={(e) => {
-                            const newImages = [...galleryImages];
-                            newImages[index].link = e.target.value;
-                            setGalleryImages(newImages);
-                          }}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
-                        />
-                      </div>
-                      <textarea 
-                        placeholder="Description (optional)" 
-                        value={img.description || ''} 
-                        onChange={(e) => {
-                          const newImages = [...galleryImages];
-                          newImages[index].description = e.target.value;
-                          setGalleryImages(newImages);
-                        }}
-                        rows={2}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors resize-none"
-                      />
-                    </div>
-                  ))}
+                    </SortableContext>
+                  </DndContext>
 
-                  <div className="flex flex-col gap-2 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Add New Image</div>
-                    <input 
-                      type="text" 
-                      value={newImageUrl}
-                      onChange={(e) => setNewImageUrl(e.target.value)}
-                      placeholder="Image URL (required)" 
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
+                  <div className="flex flex-col gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <ImageField 
+                      label="Add New Image" 
+                      value={newImageUrl} 
+                      onChange={setNewImageUrl} 
+                      placeholder="Image URL (required)"
                     />
                     <div className="grid grid-cols-2 gap-2">
                       <input 

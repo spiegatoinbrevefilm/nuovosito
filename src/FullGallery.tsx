@@ -31,13 +31,20 @@ export default function FullGallery() {
       }
 
       // Fetch works for this gallery
-      const { data: worksData } = await supabase
+      const { data: worksData, error: worksError } = await supabase
         .from('works')
         .select('*')
         .eq('group_name', galleryId.replace(/-/g, ' '))
-        .order('created_at', { ascending: false });
+        .order('display_order', { ascending: true });
 
-      if (worksData) {
+      if (worksError) {
+        const { data: fallbackData } = await supabase
+          .from('works')
+          .select('*')
+          .eq('group_name', galleryId.replace(/-/g, ' '))
+          .order('created_at', { ascending: false });
+        if (fallbackData) setWorks(fallbackData);
+      } else if (worksData) {
         setWorks(worksData);
       }
     }
@@ -140,12 +147,16 @@ export default function FullGallery() {
               onClick={() => handleOpenLightbox(work)}
             >
               <div className="overflow-hidden rounded-2xl shadow-lg mb-6 aspect-[4/5] relative">
-                <img 
-                  src={work.cover_image_url || work.image || ""} 
-                  alt={work.title}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 bg-gray-100"
-                  referrerPolicy="no-referrer"
-                />
+                {(work.cover_image_url || work.image) ? (
+                  <img 
+                    src={work.cover_image_url || work.image} 
+                    alt={work.title}
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 bg-gray-100"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-100" />
+                )}
                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               </div>
               <h3 className="text-2xl font-serif font-bold mb-2 uppercase">{work.title}</h3>
@@ -187,12 +198,16 @@ export default function FullGallery() {
                 
                 <div className="w-full lg:w-1/2">
                   <div className="sticky top-24 overflow-hidden rounded-3xl shadow-2xl group">
-                    <img 
-                      src={selectedProject.cover_image_url || selectedProject.image || ""} 
-                      alt={selectedProject.title} 
-                      className="w-full object-cover aspect-[4/5] transition-transform duration-700 group-hover:scale-110 bg-gray-100"
-                      referrerPolicy="no-referrer"
-                    />
+                    {(selectedProject.cover_image_url || selectedProject.image) ? (
+                      <img 
+                        src={selectedProject.cover_image_url || selectedProject.image} 
+                        alt={selectedProject.title} 
+                        className="w-full object-cover aspect-[4/5] transition-transform duration-700 group-hover:scale-110 bg-gray-100"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-full aspect-[4/5] bg-gray-100" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -207,12 +222,16 @@ export default function FullGallery() {
                         className="overflow-hidden rounded-2xl shadow-lg cursor-pointer group"
                         onClick={() => setSelectedImageIndex(idx)}
                       >
-                        <img 
-                          src={img.url}
-                          alt={img.title || `${selectedProject.title} gallery ${idx + 1}`}
-                          className="w-full object-cover aspect-video transition-transform duration-700 group-hover:scale-110"
-                          referrerPolicy="no-referrer"
-                        />
+                        {img.url ? (
+                          <img 
+                            src={img.url}
+                            alt={img.title || `${selectedProject.title} gallery ${idx + 1}`}
+                            className="w-full object-cover aspect-video transition-transform duration-700 group-hover:scale-110"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-full aspect-video bg-gray-100" />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -255,17 +274,21 @@ export default function FullGallery() {
             
             <div className="min-h-screen flex flex-col items-center p-4 py-24 md:p-12 md:py-24">
               <div className="relative w-full max-w-6xl flex flex-col items-center my-auto" onClick={(e) => e.stopPropagation()}>
-                <motion.img 
-                  key={selectedImageIndex}
-                  initial={{ scale: 0.95, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.95, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                  src={galleryImages[selectedImageIndex].url} 
-                  alt={galleryImages[selectedImageIndex].title || "Gallery fullscreen"} 
-                  className="w-full h-auto object-contain rounded-lg shadow-2xl"
-                  referrerPolicy="no-referrer"
-                />
+                {galleryImages[selectedImageIndex].url ? (
+                  <motion.img 
+                    key={selectedImageIndex}
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                    src={galleryImages[selectedImageIndex].url} 
+                    alt={galleryImages[selectedImageIndex].title || "Gallery fullscreen"} 
+                    className="w-full h-auto object-contain rounded-lg shadow-2xl"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full aspect-video bg-gray-900 rounded-lg" />
+                )}
                 
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}

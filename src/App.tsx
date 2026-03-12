@@ -17,13 +17,17 @@ const ParallaxImage = ({ src, alt, className }: { src: string, alt?: string, cla
     <div ref={ref} className={`relative overflow-hidden ${className}`}>
       <motion.div style={{ y, height: '130%', top: '-15%', width: '100%', position: 'absolute' }}>
         <div className="w-full h-full transition-transform duration-700 group-hover:scale-110">
-          <img 
-            src={src} 
-            alt={alt} 
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-            draggable="false"
-          />
+          {src ? (
+            <img 
+              src={src} 
+              alt={alt} 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+              draggable="false"
+            />
+          ) : (
+            <div className="w-full h-full bg-gray-100" />
+          )}
         </div>
       </motion.div>
     </div>
@@ -346,12 +350,16 @@ const Lightbox = ({ isOpen, onClose, project }: { isOpen: boolean, onClose: () =
                 {/* Right side: Cover Image (Sticky) */}
                 <div className="w-full lg:w-1/2">
                   <div className="sticky top-24 overflow-hidden rounded-3xl shadow-2xl group">
-                    <img 
-                      src={project.cover_image_url || project.image || ""} 
-                      alt={project.title} 
-                      className="w-full object-cover aspect-[4/5] transition-transform duration-700 group-hover:scale-110 bg-gray-100"
-                      referrerPolicy="no-referrer"
-                    />
+                    {(project.cover_image_url || project.image) ? (
+                      <img 
+                        src={project.cover_image_url || project.image} 
+                        alt={project.title} 
+                        className="w-full object-cover aspect-[4/5] transition-transform duration-700 group-hover:scale-110 bg-gray-100"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-full aspect-[4/5] bg-gray-100" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -367,12 +375,16 @@ const Lightbox = ({ isOpen, onClose, project }: { isOpen: boolean, onClose: () =
                         className="overflow-hidden rounded-2xl shadow-lg cursor-pointer group"
                         onClick={() => setSelectedImageIndex(idx)}
                       >
-                        <img 
-                          src={img.url}
-                          alt={img.title || `${project.title} gallery ${idx + 1}`}
-                          className="w-full object-cover aspect-video transition-transform duration-700 group-hover:scale-110"
-                          referrerPolicy="no-referrer"
-                        />
+                        {img.url ? (
+                          <img 
+                            src={img.url}
+                            alt={img.title || `${project.title} gallery ${idx + 1}`}
+                            className="w-full object-cover aspect-video transition-transform duration-700 group-hover:scale-110"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-full aspect-video bg-gray-100" />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -416,17 +428,21 @@ const Lightbox = ({ isOpen, onClose, project }: { isOpen: boolean, onClose: () =
             
             <div className="min-h-screen flex flex-col items-center p-4 py-24 md:p-12 md:py-24">
               <div className="relative w-full max-w-6xl flex flex-col items-center my-auto" onClick={(e) => e.stopPropagation()}>
-                <motion.img 
-                  key={selectedImageIndex} // Force re-render on index change for animation
-                  initial={{ scale: 0.95, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.95, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                  src={galleryImages[selectedImageIndex].url} 
-                  alt={galleryImages[selectedImageIndex].title || "Gallery fullscreen"} 
-                  className="w-full h-auto object-contain rounded-lg shadow-2xl"
-                  referrerPolicy="no-referrer"
-                />
+                {galleryImages[selectedImageIndex].url ? (
+                  <motion.img 
+                    key={selectedImageIndex} // Force re-render on index change for animation
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                    src={galleryImages[selectedImageIndex].url} 
+                    alt={galleryImages[selectedImageIndex].title || "Gallery fullscreen"} 
+                    className="w-full h-auto object-contain rounded-lg shadow-2xl"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full aspect-video bg-gray-900 rounded-lg" />
+                )}
                 
                 {/* Image Info */}
                 <motion.div 
@@ -466,7 +482,7 @@ const Lightbox = ({ isOpen, onClose, project }: { isOpen: boolean, onClose: () =
   );
 };
 
-const HorizontalGallery = ({ title, galleryId, projects, isLast = false, onMenuClick, onOpenLightbox }: { title: string, galleryId?: string, projects: any[], isLast?: boolean, onMenuClick?: () => void, onOpenLightbox?: (project: any) => void }) => {
+const HorizontalGallery = ({ title, galleryId, projects, isLast = false, onMenuClick, onOpenLightbox }: { title: string, galleryId?: string, projects: any[], isLast?: boolean, onMenuClick?: () => void, onOpenLightbox?: (project: any) => void, key?: string | number }) => {
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -578,10 +594,7 @@ const HorizontalGallery = ({ title, galleryId, projects, isLast = false, onMenuC
         <div ref={ref} className="absolute top-0 left-0 w-full h-screen pointer-events-none invisible" />
       </div>
       <motion.section 
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.8 }}
+        initial={{ opacity: 1 }}
         className={`h-screen w-full relative z-0 overflow-hidden bg-redd-light sticky top-0`}
       >
         <motion.div style={{ paddingTop: padding, paddingLeft: padding, paddingRight: padding, width: '100%', height: '100%' }}>
@@ -634,7 +647,7 @@ const HorizontalGallery = ({ title, galleryId, projects, isLast = false, onMenuC
               }}
             >
               <ParallaxImage 
-                src={proj.cover_image_url || proj.image || ""} 
+                src={proj.cover_image_url || proj.image || null} 
                 alt={proj.title} 
                 className="w-full h-full pointer-events-none bg-gray-100"
               />
@@ -785,10 +798,7 @@ const LetsTalk = ({ data }: { data: any }) => {
         <div ref={ref} className="absolute top-0 left-0 w-full h-screen pointer-events-none invisible" />
       </div>
       <motion.section 
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.8 }}
+        initial={{ opacity: 1 }}
         className={`relative z-0 h-screen bg-redd-light px-6 md:px-16 lg:px-24 flex flex-col justify-center sticky top-0 overflow-hidden ${data?.title_align === 'left' ? 'items-start text-left' : 'items-center text-center'}`}
       >
         <motion.div style={{ paddingTop: padding, paddingLeft: padding, paddingRight: padding, width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 0 }}>
@@ -1147,10 +1157,23 @@ export default function App() {
   const [sectionsData, setSectionsData] = useState<Record<string, any>>({});
 
   useEffect(() => {
+    let isMounted = true;
     async function fetchData() {
       try {
-        const { data: worksData } = await supabase.from('works').select('*').order('created_at', { ascending: false });
-        if (worksData) {
+        const { data: worksData, error: worksError } = await supabase
+          .from('works')
+          .select('*')
+          .order('display_order', { ascending: true });
+        
+        if (worksError) {
+          // Fallback to created_at if display_order doesn't exist
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('works')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (fallbackError) throw fallbackError;
+          if (fallbackData && isMounted) setWorks(fallbackData);
+        } else if (worksData && isMounted) {
           setWorks(worksData);
         }
 
@@ -1161,7 +1184,7 @@ export default function App() {
           } else {
             console.error('Error fetching settings:', settingsError.message);
           }
-        } else if (settingsData) {
+        } else if (settingsData && isMounted) {
           const names: Record<string, string> = {};
           const sections: Record<string, any> = {
             section1: {},
@@ -1189,6 +1212,7 @@ export default function App() {
       }
     }
     fetchData();
+    return () => { isMounted = false; };
   }, []);
 
   const handleOpenLightbox = (project: any) => {
@@ -1213,11 +1237,33 @@ export default function App() {
       <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <main className="relative z-10 bg-redd-light shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-b-[2rem] md:rounded-b-[3rem]">
         <Hero data={sectionsData.section1} />
-        <HorizontalGallery title={galleryNames['galleria 3'] || "Galleria 3"} galleryId="galleria-3" projects={galleria3} onMenuClick={() => setIsMenuOpen(true)} onOpenLightbox={handleOpenLightbox} />
+        <HorizontalGallery 
+          key={`galleria-3-${galleria3.length}`}
+          title={galleryNames['galleria 3'] || "Galleria 3"} 
+          galleryId="galleria-3" 
+          projects={galleria3} 
+          onMenuClick={() => setIsMenuOpen(true)} 
+          onOpenLightbox={handleOpenLightbox} 
+        />
         <Process data={sectionsData.section2} />
-        <HorizontalGallery title={galleryNames['galleria 2'] || "Galleria 2"} galleryId="galleria-2" projects={galleria2} onMenuClick={() => setIsMenuOpen(true)} onOpenLightbox={handleOpenLightbox} />
+        <HorizontalGallery 
+          key={`galleria-2-${galleria2.length}`}
+          title={galleryNames['galleria 2'] || "Galleria 2"} 
+          galleryId="galleria-2" 
+          projects={galleria2} 
+          onMenuClick={() => setIsMenuOpen(true)} 
+          onOpenLightbox={handleOpenLightbox} 
+        />
         <LetsTalk data={sectionsData.section3} />
-        <HorizontalGallery title={galleryNames['galleria 1'] || "Galleria 1"} galleryId="galleria-1" projects={galleria1} isLast={true} onMenuClick={() => setIsMenuOpen(true)} onOpenLightbox={handleOpenLightbox} />
+        <HorizontalGallery 
+          key={`galleria-1-${galleria1.length}`}
+          title={galleryNames['galleria 1'] || "Galleria 1"} 
+          galleryId="galleria-1" 
+          projects={galleria1} 
+          isLast={true} 
+          onMenuClick={() => setIsMenuOpen(true)} 
+          onOpenLightbox={handleOpenLightbox} 
+        />
       </main>
       <div className="relative z-0">
         <div className="fixed bottom-0 left-0 w-full -z-10 bg-[#161a1d]">

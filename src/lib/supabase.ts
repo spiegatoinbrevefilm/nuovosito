@@ -25,6 +25,7 @@ export type Work = {
   description_top: string;
   description_bottom: string;
   group_name: string; // e.g., 'galleria 3', 'sezione 1'
+  display_order: number;
   created_at: string;
 };
 
