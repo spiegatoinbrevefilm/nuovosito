@@ -13,7 +13,7 @@ const ParallaxImage = ({ src, alt, className }: { src: string, alt?: string, cla
   return (
     <div ref={ref} className={`relative overflow-hidden ${className}`}>
       <motion.div style={{ y, height: '130%', top: '-15%', width: '100%', position: 'absolute' }}>
-        <div className="w-full h-full transition-transform duration-700 group-hover:scale-[1.05]">
+        <div className="w-full h-full transition-transform duration-700 group-hover:scale-110">
           <img 
             src={src} 
             alt={alt} 
@@ -27,6 +27,9 @@ const ParallaxImage = ({ src, alt, className }: { src: string, alt?: string, cla
   );
 };
 
+import { Link } from 'react-router-dom';
+import { Lock } from 'lucide-react';
+
 const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
   const [scrolled, setScrolled] = useState(false);
 
@@ -39,11 +42,19 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
   }, []);
 
   return (
-    <nav className={`fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 md:px-12 pt-6 pb-24 transition-all duration-500 ${scrolled ? 'bg-gradient-to-b from-redd-light/100 via-redd-light/60 to-transparent text-redd-dark' : 'text-white'}`}>
-      <div className="text-xl font-medium tracking-tight uppercase">LORENZO PACI</div>
-      <button onClick={onMenuClick} className="flex items-center gap-2 text-sm uppercase tracking-widest hover:opacity-70 transition-opacity">
-        Menu <Menu size={18} />
-      </button>
+    <nav className={`fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 md:px-12 pt-6 pb-12 transition-all duration-500 ${scrolled ? 'bg-gradient-to-b from-redd-light/100 via-redd-light/80 to-transparent text-redd-dark' : 'text-white'}`}>
+      <div className="flex flex-col">
+        <div className="text-xl font-bold tracking-tight uppercase">LORENZO PACI</div>
+        <div className="text-[10px] tracking-[0.2em] uppercase opacity-70">CREATIVE VISIONARY</div>
+      </div>
+      <div className="flex items-center gap-6">
+        <Link to="/admin" className="hidden md:flex items-center gap-2 bg-black text-white px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-colors">
+          <Lock size={14} /> Admin Panel
+        </Link>
+        <button onClick={onMenuClick} className="flex items-center gap-2 text-sm uppercase tracking-widest hover:opacity-70 transition-opacity">
+          Menu <Menu size={18} />
+        </button>
+      </div>
     </nav>
   );
 };
@@ -133,16 +144,18 @@ const Process = () => {
         {/* 4 Columns (Desktop) */}
         <div className="relative z-20 hidden md:flex w-full h-full">
           {processSteps.map((step, i) => (
-            <a 
+            <div 
               key={i} 
-              href="#"
               className="group relative flex-1 flex flex-col justify-end p-8 lg:p-12 overflow-hidden"
             >
               {i < processSteps.length - 1 && (
                 <div className="absolute right-0 top-0 bottom-0 w-[1px] bg-gradient-to-t from-white/30 via-white/5 to-transparent pointer-events-none" />
               )}
-              <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-              <div className="relative z-10 transform transition-transform duration-500 group-hover:-translate-y-4">
+              <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+              
+              <a href="#" className="absolute inset-x-0 bottom-0 h-1/2 z-20" />
+
+              <div className="relative z-10 transform transition-transform duration-500 group-hover:-translate-y-4 pointer-events-none">
                 <h3 className="text-2xl lg:text-3xl font-bold mb-4 flex items-center gap-4">
                   {step.title}
                   <ArrowRight className="opacity-0 group-hover:opacity-100 transition-opacity duration-500" size={24} />
@@ -153,7 +166,7 @@ const Process = () => {
                   </p>
                 </div>
               </div>
-            </a>
+            </div>
           ))}
         </div>
 
@@ -307,7 +320,7 @@ const Lightbox = ({ isOpen, onClose, project }: { isOpen: boolean, onClose: () =
                     <img 
                       src={project.image} 
                       alt={project.title} 
-                      className="w-full object-cover aspect-[4/5] transition-transform duration-700 group-hover:scale-105"
+                      className="w-full object-cover aspect-[4/5] transition-transform duration-700 group-hover:scale-110"
                       referrerPolicy="no-referrer"
                     />
                   </div>
@@ -328,7 +341,7 @@ const Lightbox = ({ isOpen, onClose, project }: { isOpen: boolean, onClose: () =
                         <img 
                           src={img.url}
                           alt={img.title || `${project.title} gallery ${idx + 1}`}
-                          className="w-full object-cover aspect-video transition-transform duration-700 group-hover:scale-105"
+                          className="w-full object-cover aspect-video transition-transform duration-700 group-hover:scale-110"
                           referrerPolicy="no-referrer"
                         />
                       </div>
@@ -348,7 +361,7 @@ const Lightbox = ({ isOpen, onClose, project }: { isOpen: boolean, onClose: () =
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-black/95 overflow-y-auto"
+            className="fixed inset-0 z-[200] bg-black/85 overflow-y-auto"
             onClick={() => setSelectedImageIndex(null)}
           >
             <button 
@@ -409,6 +422,11 @@ const Lightbox = ({ isOpen, onClose, project }: { isOpen: boolean, onClose: () =
                       View Details <ArrowUpRight size={16} />
                     </a>
                   )}
+                  
+                  {/* Image Counter */}
+                  <div className="mt-12 text-sm tracking-[0.2em] text-white/50 font-mono">
+                    {selectedImageIndex + 1} / {project.gallery.length}
+                  </div>
                 </motion.div>
               </div>
             </div>
@@ -453,30 +471,30 @@ const HorizontalGallery = ({ offset = 0, isLast = false, onMenuClick, onOpenLigh
       };
     } else if (rel === 1) {
       return {
-        width: '30vw',
+        width: '26vw',
         height: 'calc(100vh - 16rem)',
-        left: '67vw',
-        top: '6rem',
+        left: 'calc(65vw + 2rem)',
+        top: '8rem',
         zIndex: 20,
         opacity: 1,
         borderTopRightRadius: '0rem',
       };
     } else if (rel === 2) {
       return {
-        width: '30vw',
+        width: '26vw',
         height: 'calc(100vh - 16rem)',
-        left: '99vw',
-        top: '6rem',
+        left: 'calc(91vw + 4rem)',
+        top: '8rem',
         zIndex: 20,
         opacity: 1,
         borderTopRightRadius: '0rem',
       };
     } else if (rel === 3) {
       return {
-        width: '30vw',
+        width: '26vw',
         height: 'calc(100vh - 16rem)',
-        left: '131vw',
-        top: '6rem',
+        left: 'calc(117vw + 6rem)',
+        top: '8rem',
         zIndex: 20,
         opacity: 1,
         borderTopRightRadius: '0rem',
@@ -493,10 +511,10 @@ const HorizontalGallery = ({ offset = 0, isLast = false, onMenuClick, onOpenLigh
       };
     } else {
       return {
-        width: '30vw',
+        width: '26vw',
         height: 'calc(100vh - 16rem)',
-        left: '163vw',
-        top: '6rem',
+        left: 'calc(143vw + 8rem)',
+        top: '8rem',
         zIndex: 20,
         opacity: 0,
         borderTopRightRadius: '0rem',
@@ -515,7 +533,7 @@ const HorizontalGallery = ({ offset = 0, isLast = false, onMenuClick, onOpenLigh
         <div className="w-[65vw] h-full bg-white" />
         <div className="w-[35vw] h-full bg-white flex flex-col justify-between p-8 md:p-12">
           <div className="flex justify-between items-center">
-            <h3 className="text-2xl md:text-3xl font-bold">Uitgelichte projecten</h3>
+            <h3 className="text-3xl md:text-4xl font-sans uppercase tracking-tight text-redd-dark">NOME GALLERIA</h3>
           </div>
         </div>
       </div>
@@ -553,6 +571,12 @@ const HorizontalGallery = ({ offset = 0, isLast = false, onMenuClick, onOpenLigh
                 transition={{ duration: 0.4 }}
                 className="absolute inset-0 bg-black/20 pointer-events-none" 
               />
+              
+              <motion.div 
+                animate={{ opacity: rel > 0 ? 1 : 0 }}
+                transition={{ duration: 0.4 }}
+                className="absolute inset-0 bg-gradient-to-b from-white/80 via-transparent to-transparent pointer-events-none" 
+              />
 
               <motion.div 
                 animate={{ 
@@ -562,12 +586,15 @@ const HorizontalGallery = ({ offset = 0, isLast = false, onMenuClick, onOpenLigh
                 transition={{ duration: 0.6, delay: rel === 0 ? 0.2 : 0 }}
                 className="absolute inset-0 p-8 md:p-16 flex flex-col justify-between text-white pointer-events-none"
               >
-                <div className="text-xl font-bold tracking-widest uppercase">REDD</div>
+                <div className="text-xl font-bold tracking-widest uppercase opacity-0">REDD</div>
                 
                 <div className="my-auto">
                   <h2 className="text-5xl md:text-7xl lg:text-[6rem] font-serif leading-tight drop-shadow-lg max-w-4xl">
                     {proj.title}
                   </h2>
+                  <p className="mt-4 text-lg md:text-xl max-w-2xl line-clamp-2 drop-shadow-md text-gray-200">
+                    {proj.description}
+                  </p>
                 </div>
 
                 <div>
@@ -587,21 +614,28 @@ const HorizontalGallery = ({ offset = 0, isLast = false, onMenuClick, onOpenLigh
         })}
       </div>
 
+      {/* Navigation Hint Arrow */}
+      <div className="absolute top-1/2 left-[calc(78vw+2rem)] -translate-x-1/2 -translate-y-1/2 pointer-events-auto flex flex-col items-center gap-2 opacity-50 hover:opacity-100 transition-opacity cursor-pointer z-50" onClick={() => setActiveIndex(prev => Math.min(prev + 1, featuredProjects.length - 1))}>
+        <div className="w-12 h-12 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center shadow-lg text-redd-dark">
+          <ArrowRight size={20} />
+        </div>
+        <span className="text-xs uppercase tracking-widest font-bold text-redd-dark bg-white/80 px-2 py-1 rounded">Drag or Click</span>
+      </div>
+
       {/* UI Overlay (Buttons) */}
-      <div className="absolute inset-x-0 top-0 bottom-4 md:bottom-6 pointer-events-none z-50 flex">
-        <div className="w-[65vw] h-full" />
-        <div className="w-[35vw] h-full flex flex-col justify-between p-8 md:p-12">
-          <div className="flex justify-end items-center pointer-events-auto">
-            {/* Menu button removed */}
+      <div className="absolute inset-x-0 bottom-0 h-[8rem] pointer-events-none z-50 flex items-start pt-8">
+        <div className="w-[calc(65vw+2rem)]" />
+        <div className="flex-1 flex justify-between items-center pr-8 md:pr-12 pointer-events-auto">
+          <div className="flex-1 flex justify-center">
+            <button 
+              onClick={() => onOpenLightbox && onOpenLightbox(featuredProjects[activeIndex])}
+              className="border border-redd-dark px-6 py-3 text-sm uppercase tracking-widest hover:bg-redd-dark hover:text-white transition-colors flex items-center gap-2 bg-white"
+            >
+              Apri galleria completa <ArrowRight size={16} />
+            </button>
           </div>
-          
-          <div className="flex justify-between items-center border-t border-gray-200 pt-8 pointer-events-auto">
-            <a href="#" className="flex items-center gap-4 text-sm uppercase tracking-widest border border-black px-6 py-3 hover:bg-black hover:text-white transition-colors bg-white">
-              Alle projecten <ArrowRight size={16} />
-            </a>
-            <div className="text-sm font-mono">
-              {String((activeIndex % baseProjects.length) + 1).padStart(2, '0')} <span className="text-gray-400">· {String(baseProjects.length).padStart(2, '0')}</span>
-            </div>
+          <div className="text-2xl font-sans tracking-tight text-redd-dark">
+            {activeIndex + 1}/{featuredProjects.length}
           </div>
         </div>
       </div>
@@ -695,11 +729,11 @@ const LetsTalk = () => {
 
 const Footer = () => {
   return (
-    <footer className="w-full bg-[#161a1d] text-[#8e9299] pt-12 pb-4 px-6 md:px-16 lg:px-24 flex flex-col justify-center relative z-50">
-      <div className="flex flex-col md:flex-row justify-between items-center md:items-start w-full max-w-7xl mx-auto mb-8 md:mb-10 gap-12 md:gap-0">
+    <footer className="w-full bg-[#161a1d] text-[#8e9299] pt-24 md:pt-32 pb-4 px-6 md:px-16 lg:px-24 flex flex-col justify-center relative z-50">
+      <div className="flex flex-col md:flex-row justify-between items-center w-full max-w-7xl mx-auto mb-8 md:mb-10 gap-12 md:gap-0">
         
         {/* Left Column */}
-        <div className="flex flex-col gap-6 text-center md:text-left text-sm tracking-[0.2em] uppercase">
+        <div className="flex flex-col gap-6 text-center md:text-left text-sm tracking-[0.2em] uppercase mt-12 md:mt-16">
           <a href="#" className="hover:text-white transition-colors">Graphic</a>
           <a href="#" className="hover:text-white transition-colors">Photo</a>
           <a href="#" className="hover:text-white transition-colors">Project</a>
@@ -714,7 +748,7 @@ const Footer = () => {
             Creative Visionary
           </p>
           
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 mb-12 md:mb-20">
             <a href="#" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-white">
               <Instagram size={16} />
             </a>
@@ -731,7 +765,7 @@ const Footer = () => {
         </div>
 
         {/* Right Column */}
-        <div className="flex flex-col gap-6 text-center md:text-right text-sm tracking-[0.2em] uppercase">
+        <div className="flex flex-col gap-6 text-center md:text-right text-sm tracking-[0.2em] uppercase mt-12 md:mt-16">
           <a href="#" className="hover:text-white transition-colors">Client Area</a>
           <a href="#" className="hover:text-white transition-colors">Bio</a>
           <a href="#" className="hover:text-white transition-colors">Privacy & Policy</a>
